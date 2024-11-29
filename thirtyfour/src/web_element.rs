@@ -3,6 +3,8 @@ use serde_json::Value;
 use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::time::{sleep, Instant};
 
 use crate::common::command::Command;
 use crate::error::{WebDriverError, WebDriverErrorInner};
@@ -588,6 +590,41 @@ impl WebElement {
             .cmd(Command::FindElementsFromElement(self.element_id.clone(), by.into()))
             .await?;
         r.elements(self.handle.clone())
+    }
+
+    /// Waits for an element with an explicitly defined time
+    ///
+    /// # Example:
+    /// ```no_run
+    /// # use thirtyfour::prelude::*;
+    /// # use thirtyfour::support::block_on;
+    /// #
+    /// # fn main() -> WebDriverResult<()> {
+    /// #     block_on(async {
+    /// let caps = DesiredCapabilities::chrome();
+    /// let driver = WebDriver::new("http://localhost:4444", caps).await?;
+    /// let _ = driver.get("https://www.google.com").await?;
+    /// let elem = driver.wait_element(By::Id("my-element-id"),5).await?;
+    /// elem.click().await?;
+    /// driver.quit().await?;
+    /// # Ok(())
+    /// #     })
+    /// # }
+    /// ```
+    pub async fn wait_element(&self, by: By, timeout: u64) -> WebDriverResult<WebElement> {
+        let start = Instant::now();
+        let end = Duration::from_secs(timeout);
+        loop {
+            sleep(Duration::from_secs(1)).await;
+            if let Ok(elm) = self.find(by.clone()).await {
+                return Ok(elm);
+            }
+            if &(Instant::now() - start) > &end {
+                if let Err(e) = self.find(by.clone()).await {
+                    return Err(WebDriverError::from_inner(e.into_inner()));
+                }
+            }
+        }
     }
 
     /// Search for all child elements of this WebElement that match the specified selector.

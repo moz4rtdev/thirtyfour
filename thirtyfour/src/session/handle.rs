@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::OnceCell;
+use tokio::time::{sleep, Instant};
 use url::{ParseError, Url};
 
 use crate::action_chain::ActionChain;
@@ -297,6 +298,45 @@ impl SessionHandle {
     #[deprecated(since = "0.30.0", note = "This method has been renamed to find_all()")]
     pub async fn find_elements(self: &Arc<Self>, by: By) -> WebDriverResult<Vec<WebElement>> {
         self.find_all(by).await
+    }
+
+    /// Waits for an element with an explicitly defined time
+    ///
+    /// # Example:
+    /// ```no_run
+    /// # use thirtyfour::prelude::*;
+    /// # use thirtyfour::support::block_on;
+    /// #
+    /// # fn main() -> WebDriverResult<()> {
+    /// #     block_on(async {
+    /// let caps = DesiredCapabilities::chrome();
+    /// let driver = WebDriver::new("http://localhost:4444", caps).await?;
+    /// let _ = driver.get("https://www.google.com").await?;
+    /// let elem = driver.wait_element(By::Id("my-element-id"),5).await?;
+    /// elem.click().await?;
+    /// driver.quit().await?;
+    /// # Ok(())
+    /// #     })
+    /// # }
+    /// ```
+    pub async fn wait_element(
+        self: &Arc<Self>,
+        by: By,
+        timeout: u64,
+    ) -> WebDriverResult<WebElement> {
+        let start = Instant::now();
+        let end = Duration::from_secs(timeout);
+        loop {
+            sleep(Duration::from_secs(1)).await;
+            if let Ok(elm) = self.find(by.clone()).await {
+                return Ok(elm);
+            }
+            if &(Instant::now() - start) > &end {
+                if let Err(e) = self.find(by.clone()).await {
+                    return Err(WebDriverError::from_inner(e.into_inner()));
+                }
+            }
+        }
     }
 
     /// Execute the specified Javascript synchronously and return the result.
