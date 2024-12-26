@@ -339,6 +339,45 @@ impl SessionHandle {
         }
     }
 
+    /// Waits for an element with an explicitly defined time
+    ///
+    /// # Example:
+    /// ```no_run
+    /// # use thirtyfour::prelude::*;
+    /// # use thirtyfour::support::block_on;
+    /// #
+    /// # fn main() -> WebDriverResult<()> {
+    /// #     block_on(async {
+    /// let caps = DesiredCapabilities::chrome();
+    /// let driver = WebDriver::new("http://localhost:4444", caps).await?;
+    /// let _ = driver.get("https://www.google.com").await?;
+    /// let elem = driver.wait_elements(By::Id("my-element-id"),5).await?;
+    /// elem[0].click().await?;
+    /// driver.quit().await?;
+    /// # Ok(())
+    /// #     })
+    /// # }
+    /// ```
+    pub async fn wait_elements(
+        self: &Arc<Self>,
+        by: By,
+        timeout: u64,
+    ) -> WebDriverResult<Vec<WebElement>> {
+        let start = Instant::now();
+        let end = Duration::from_secs(timeout);
+        loop {
+            sleep(Duration::from_secs(1)).await;
+            if let Ok(elms) = self.find_all(by.clone()).await {
+                return Ok(elms);
+            }
+            if &(Instant::now() - start) > &end {
+                if let Err(e) = self.find_all(by.clone()).await {
+                    return Err(WebDriverError::from_inner(e.into_inner()));
+                }
+            }
+        }
+    }
+
     /// Execute the specified Javascript synchronously and return the result.
     ///
     /// # Example:

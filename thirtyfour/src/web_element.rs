@@ -627,6 +627,41 @@ impl WebElement {
         }
     }
 
+    /// Waits for an element with an explicitly defined time
+    ///
+    /// # Example:
+    /// ```no_run
+    /// # use thirtyfour::prelude::*;
+    /// # use thirtyfour::support::block_on;
+    /// #
+    /// # fn main() -> WebDriverResult<()> {
+    /// #     block_on(async {
+    /// let caps = DesiredCapabilities::chrome();
+    /// let driver = WebDriver::new("http://localhost:4444", caps).await?;
+    /// let _ = driver.get("https://www.google.com").await?;
+    /// let elem = driver.wait_elements(By::Id("my-element-id"),5).await?;
+    /// elem[0].click().await?;
+    /// driver.quit().await?;
+    /// # Ok(())
+    /// #     })
+    /// # }
+    /// ```
+    pub async fn wait_elements(&self, by: By, timeout: u64) -> WebDriverResult<Vec<WebElement>> {
+        let start = Instant::now();
+        let end = Duration::from_secs(timeout);
+        loop {
+            sleep(Duration::from_secs(1)).await;
+            if let Ok(elms) = self.find_all(by.clone()).await {
+                return Ok(elms);
+            }
+            if &(Instant::now() - start) > &end {
+                if let Err(e) = self.find_all(by.clone()).await {
+                    return Err(WebDriverError::from_inner(e.into_inner()));
+                }
+            }
+        }
+    }
+
     /// Search for all child elements of this WebElement that match the specified selector.
     #[deprecated(since = "0.30.0", note = "This method has been renamed to find_all()")]
     pub async fn find_elements(&self, by: By) -> WebDriverResult<Vec<WebElement>> {
