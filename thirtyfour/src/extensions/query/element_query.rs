@@ -31,13 +31,22 @@ fn get_selector_summary(selectors: &[ElementSelector]) -> String {
     format!("[{}]", Criteria(selectors))
 }
 
+fn get_elements_description(len: Option<usize>, description: &str) -> Cow<str> {
+    let suffix = match len {
+        Some(1) => "element",
+        Some(_) => "elements",
+        None => "element(s)",
+    };
+
+    match description.trim() {
+        "" => Cow::Borrowed(suffix),
+        _ => Cow::Owned(format!("'{}' {suffix}", description.escape_default())),
+    }
+}
+
 /// Helper function to return the NoSuchElement error struct.
 fn no_such_element(selectors: &[ElementSelector], description: &str) -> WebDriverError {
-    let element_description: Cow<str> = if description.is_empty() {
-        "element(s)".into()
-    } else {
-        format!("'{description}' element(s)").into()
-    };
+    let element_description = get_elements_description(None, description);
 
     crate::error::no_such_element(format!(
         "no such element: {element_description} not found using selectors: {}",
@@ -353,15 +362,11 @@ impl ElementQuery {
     ///
     /// Returns Err(WebDriverError::NoSuchElement) if no elements match.
     pub async fn first(&self) -> WebDriverResult<WebElement> {
-        let mut elements = self.run_poller(true, false).await?;
-
-        if elements.is_empty() {
+        self.first_opt().await?.ok_or_else(|| {
             let desc: &str = self.options.description.as_deref().unwrap_or("");
             let err = no_such_element(&self.selectors, desc);
-            Err(err)
-        } else {
-            Ok(elements.remove(0))
-        }
+            err
+        })
     }
 
     /// Return only a single WebElement that matches any selector (including filters).
@@ -380,7 +385,18 @@ impl ElementQuery {
         let mut elements = self.run_poller(false, false).await?;
 
         if elements.len() == 1 {
-            Ok(elements.remove(0))
+            Ok(elements.swap_remove(0))
+        } else if !elements.is_empty() {
+            let element_description = get_elements_description(
+                Some(elements.len()),
+                self.options.description.as_deref().unwrap_or(""),
+            );
+
+            Err(crate::error::no_such_element(format!(
+                "too many elements received; found {count} {element_description} using selectors: {selectors}",
+                count = elements.len(),
+                selectors = get_selector_summary(&self.selectors)
+            )))
         } else {
             let desc: &str = self.options.description.as_deref().unwrap_or("");
             let err = no_such_element(&self.selectors, desc);
